@@ -21,6 +21,8 @@ concurrency:
 
 jobs:
   publish:
+    # Only publish for release tags starting with "v"
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
 
