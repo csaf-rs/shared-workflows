@@ -18,7 +18,7 @@ runs:
       uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
       with:
         file: ${{ inputs.file-to-scan }}
-        format: cyclonedx-json@1.6
+        format: cyclonedx-json@1.7
         artifact-name: ${{ inputs.artifact-name-prefix }}_sbom.cdx.json
         upload-release-assets: false
 
