@@ -1,0 +1,83 @@
+name: WASM npm Package
+description: >
+  Build a wasm-bindgen npm package with wasm-pack for browsers and Node.js, and verify it.
+  The package is built with "--target web" and gets an additional Node.js entry selected via
+  the "exports" map, so "import init from '<package>'; await init();" works in both environments.
+  Publishing is intentionally left to the caller (npm trusted publishing is bound to the caller's workflow).
+  Requires an already checked-out Rust project with rustup configured, and Node.js 20.19+ / 22.12+ on the PATH
+  (set it up with actions/setup-node before calling this action, so the caller's registry configuration is kept).
+
+inputs:
+  scope:
+    description: npm scope passed to wasm-pack (without "@")
+    default: csaf-rs
+
+  out-dir:
+    description: Output directory of the package, relative to the working directory
+    default: pkg
+
+  cargo-args:
+    description: Additional arguments passed to cargo via "wasm-pack build ... -- <args>"
+    default: "--features wasm"
+
+  readme:
+    description: Optional path (relative to the working directory) of a README that replaces the generated one in the package
+    default: ""
+
+  working-directory:
+    description: Directory of the Rust crate to build
+    default: "."
+
+  smoke-test:
+    description: Pack and install the package and check that it loads in Node.js (ESM and CommonJS)
+    default: "true"
+
+runs:
+  using: composite
+
+  steps:
+    - name: Install wasm-pack
+      shell: bash
+      run: |
+        rustup target add wasm32-unknown-unknown
+
+        # Installing from source is slow, so reuse an existing installation
+        command -v wasm-pack > /dev/null || cargo install wasm-pack --locked
+
+    - name: Build wasm package
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        WASM_SCOPE: ${{ inputs.scope }}
+        WASM_OUT_DIR: ${{ inputs.out-dir }}
+        WASM_CARGO_ARGS: ${{ inputs.cargo-args }}
+      run: |
+        # Split additional arguments into a Bash array without interpreting backslashes
+        read -r -a args <<< "$WASM_CARGO_ARGS"
+
+        # The "web" target is loadable in browsers without a bundler; the Node.js entry is added below
+        wasm-pack build --release --target web --scope "$WASM_SCOPE" --out-dir "$WASM_OUT_DIR" -- "${args[@]}"
+
+    - name: Use package README
+      if: inputs.readme != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        WASM_README: ${{ inputs.readme }}
+        WASM_OUT_DIR: ${{ inputs.out-dir }}
+      run: cp "$WASM_README" "$WASM_OUT_DIR/README.md"
+
+    - name: Add Node.js entry and exports map
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        WASM_OUT_DIR: ${{ inputs.out-dir }}
+      run: node "${{ github.action_path }}/node-shim.mjs" "$WASM_OUT_DIR"
+
+    - name: Smoke test package
+      if: inputs.smoke-test == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        WASM_OUT_DIR: ${{ inputs.out-dir }}
+      run: bash "${{ github.action_path }}/smoke-test.sh" "$WASM_OUT_DIR"
